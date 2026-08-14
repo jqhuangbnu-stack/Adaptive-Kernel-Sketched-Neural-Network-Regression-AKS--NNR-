@@ -206,7 +206,6 @@ class KernelModelTrainer:
         self.history_losses = [initial_loss]
         var_y = initial_loss
 
-        # 必须先初始化这个字典
         trained_models = {}
 
         final_d = d_max
