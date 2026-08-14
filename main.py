@@ -22,8 +22,6 @@ from Step1_initialization import KernelSketcher
 from Step2_model_training import KernelModelTrainer
 from Step3_dimension_estimation import DimensionEstimator
 
-
-# 强制刷新输出
 sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', buffering=1)
 sys.stderr = os.fdopen(sys.stderr.fileno(), 'w', buffering=1)
 
