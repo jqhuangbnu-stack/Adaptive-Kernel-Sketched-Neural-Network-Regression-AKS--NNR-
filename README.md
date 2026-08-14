@@ -45,6 +45,89 @@ python main.py --model A --scenario I --p 20 --n 500 --m 500 \
 For `n=1000`, use the corresponding value of `lambda_n` selected in the
 simulation configuration.
 
+## Real-data experiments
+
+The real-data scripts are intended to be run from the repository root. Put
+the downloaded data files in a local `data/` directory; do not hard-code a
+personal computer path in the scripts.
+
+### Energy Efficiency
+
+Download the dataset from the UCI Machine Learning Repository:
+
+<https://archive.ics.uci.edu/dataset/242/energy+efficiency>
+
+Use the file `ENB2012_data.xlsx`. It contains 768 observations, 8 predictor
+variables, and two continuous responses, `Y1` and `Y2`. The usual analysis
+uses a random 70/30 train-test split, standardizes predictors using the
+training data only, and reports the test MSE averaged over the two responses.
+
+Example command:
+
+```bash
+python real_data/run_energy_efficiency_realdata.py \
+  --data data/ENB2012_data.xlsx \
+  --out_dir results/energy_efficiency \
+  --method aks_nnr --seed 1 \
+  --d_max 10 --m 0 --h 0 --lambda_c 0.005 \
+  --L 3 --hidden_dim 256 --lr 0.001 \
+  --patience 20 --val_split 0.30 --stop_threshold 0.30 \
+  --max_epochs 800
+```
+
+The `--method` option can be set to `aks_nnr`, `full_dnn`, `linear`,
+`gmddnet_s`, or `gmddnet_f`. For GMDDNet-S/F, the learned representation is
+followed by the downstream regression model specified by the script.
+
+### Student Performance
+
+Download the Student Performance dataset from UCI:
+
+<https://archive.ics.uci.edu/dataset/320/student+performance>
+
+Use `student-mat.csv` or `student-por.csv`. The three continuous responses
+are `G1`, `G2`, and `G3`; these columns must be excluded from the predictors.
+The remaining categorical variables are encoded before fitting. The default
+analysis uses a random 70/30 train-test split, training-split standardization,
+and test MSE averaged over the three responses.
+
+Example command:
+
+```bash
+python real_data/run_student_performance_realdata.py \
+  --data data/student-por.csv \
+  --out_dir results/student_performance \
+  --method aks_nnr --seed 1 \
+  --d_max 10 --m 0 --h 0 --lambda_c 0.005 \
+  --L 3 --hidden_dim 256 --lr 0.001 \
+  --patience 20 --val_split 0.30 --stop_threshold 0.30 \
+  --max_epochs 800
+```
+
+To repeat an experiment, change `--seed`. For example, a 200-run study can
+use seeds 1 through 200 and store the corresponding JSON files in the same
+output directory.
+
+### Summarizing real-data results
+
+After the runs finish, summarize the JSON files with the corresponding
+summary script:
+
+```bash
+python summarize_energy_efficiency_results.py \
+  --base_dir results/energy_efficiency \
+  --out_dir results/energy_efficiency/analysis
+
+python summarize_student_performance_results.py \
+  --base_dir results/student_performance \
+  --out_dir results/student_performance/analysis
+```
+
+The analysis directory contains the method-level summary and the individual
+run table. Large result folders, logs, checkpoints, and `ghat` files are not
+required for the basic repository demonstration and should normally be
+excluded from GitHub.
+
 ## Run in a browser with Jupyter
 
 Start Jupyter from the repository root:
