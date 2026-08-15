@@ -75,9 +75,15 @@ python real_data/run_energy_efficiency_realdata.py \
   --max_epochs 800
 ```
 
-The `--method` option can be set to `aks_nnr`, `full_dnn`, `linear`,
-`gmddnet_s`, or `gmddnet_f`. For GMDDNet-S/F, the learned representation is
-followed by the downstream regression model specified by the script.
+The `--method` option for the code provided in this repository can be set to
+`aks_nnr`, `full_dnn`, or `linear`.
+
+GMDDNet-S and GMDDNet-F are included only as external comparison methods in
+the paper. Their implementations are not distributed in this repository, and
+the real-data scripts do not provide `gmddnet_s` or `gmddnet_f` options. Users
+who need to reproduce those comparisons should obtain the corresponding code
+from the original authors and then apply the same train/test split,
+preprocessing, random seeds, and downstream regression protocol used here.
 
 ### Student Performance
 
