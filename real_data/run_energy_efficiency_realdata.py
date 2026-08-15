@@ -150,35 +150,6 @@ def fit_full_dnn(Xtr, Ytr, args, seed, device):
     return model.eval()
 
 
-def gmdd_matrix(g_hat, y):
-    """Section 5 empirical GMDD matrix used for order estimation."""
-    g_hat = np.asarray(g_hat, dtype=np.float64)
-    y = np.asarray(y, dtype=np.float64)
-    if y.ndim == 1:
-        y = y[:, None]
-    centered = g_hat - g_hat.mean(axis=0, keepdims=True)
-    diff = y[:, None, :] - y[None, :, :]
-    dist_y = np.sqrt(np.sum(diff * diff, axis=2))
-    upper_dist = np.triu(dist_y, k=1)
-    delta = -(centered.T @ upper_dist @ centered)
-    delta /= g_hat.shape[0] * (g_hat.shape[0] - 1) / 2.0
-    return 0.5 * (delta + delta.T)
-
-
-def choose_gmdd_dimension(g_hat, y, rho=0.90):
-    delta = gmdd_matrix(g_hat, y)
-    eigenvalues, eigenvectors = np.linalg.eigh(delta)
-    order = np.argsort(eigenvalues)[::-1]
-    eigenvalues = np.maximum(eigenvalues[order], 0.0)
-    eigenvectors = eigenvectors[:, order]
-    total = float(eigenvalues.sum())
-    if not np.isfinite(total) or total <= 1e-12:
-        return 1, eigenvalues, np.zeros_like(eigenvalues), True
-    cumulative = np.cumsum(eigenvalues) / total
-    d_hat = int(np.searchsorted(cumulative, rho, side="left") + 1)
-    return d_hat, eigenvalues, cumulative, False
-
-
 def run_one(X, Y, args, seed):
     started = time.time()
     device = "cuda" if torch.cuda.is_available() and not args.cpu else "cpu"
@@ -214,74 +185,6 @@ def run_one(X, Y, args, seed):
         with torch.no_grad(): pred = model(feat).cpu().numpy(); ghat = model.transform(feat).cpu().numpy()
         result.update({"d_estimated": dhat, "fallback_used": bool(est.dimension_fallback_used), "h": h,
                        "m_sketch": m, "lambda_n": float(lam), "r_hats": json.dumps(est.r_hats)})
-    elif args.method in {"gmddnet_s", "gmddnet_f"}:
-        nsdr_dir = os.environ.get("NSDR_DIR", os.path.join(THIS_DIR, "aos_code"))
-        sys.path.insert(0, nsdr_dir)
-        from NSDR import NSDR
-        # Compatibility for newer scikit-learn versions used on the server.
-        if not hasattr(NSDR, "_validate_data"):
-            from sklearn.utils import check_X_y, check_array
-            def _validate_data(self, X, y=None, **kwargs):
-                kwargs.pop("reset", None)
-                return check_array(X, **kwargs) if y is None else check_X_y(X, y, **kwargs)
-            NSDR._validate_data = _validate_data
-        nsdr_device = "cuda:0" if device == "cuda" else "cpu"
-        from sklearn.linear_model import LinearRegression
-        if args.method == "gmddnet_s":
-            # The successive method extracts one direction at each step.
-            # Leave the network unspecified so NSDR creates a one-output
-            # network per step, while the full multivariate response is used
-            # in the GMDD objective.
-            model = NSDR(max_dim=args.gmdd_max_dim,
-                method="seq", iter_num=args.iter_num, batch_size=args.batch_size,
-                lr=args.lr, retrain=True, adaptive_cv=False, y_mode=0,
-                device=nsdr_device, random_state=seed)
-            model.fit(Xtr, Ytr)
-            ztr_full = np.asarray(model.transform(Xtr), dtype=np.float64)
-            zte_full = np.asarray(model.transform(Xte), dtype=np.float64)
-            dhat, eig, cumulative, order_fallback = choose_gmdd_dimension(
-                ztr_full, Ytr, rho=args.gmdd_rho
-            )
-            dhat = max(1, min(dhat, ztr_full.shape[1]))
-            Ztr, Zte = ztr_full[:, :dhat], zte_full[:, :dhat]
-            rep_dim = Zte.shape[1]
-        else:
-            net = NSDR.generate_default_net(Xtr.shape[1], output_dim=args.gmdd_max_dim)
-            model = NSDR(neural_network=net, max_dim=1, method="fnorm",
-                iter_num=args.iter_num, batch_size=args.batch_size, lr=args.lr,
-                retrain=True, adaptive_cv=False, y_mode=0, device=nsdr_device,
-                random_state=seed)
-            model.fit(Xtr, Ytr)
-            ztr_full = np.asarray(model.transform(Xtr), dtype=np.float64)
-            zte_full = np.asarray(model.transform(Xte), dtype=np.float64)
-            dhat, eig, cumulative, order_fallback = choose_gmdd_dimension(
-                ztr_full, Ytr, rho=args.gmdd_rho
-            )
-            dhat = max(1, min(dhat, ztr_full.shape[1]))
-            Ztr, Zte = ztr_full[:, :dhat], zte_full[:, :dhat]
-            rep_dim = Zte.shape[1]
-        # Evaluate the learned sufficient predictors with two downstream
-        # regressors: a linear map and a DNN map.
-        reg = LinearRegression().fit(Ztr, Ytr)
-        pred_linear = reg.predict(Zte)
-        downstream_dnn = fit_full_dnn(
-            Ztr, Ytr, args, seed + 104729, device
-        )
-        with torch.no_grad():
-            pred_dnn = downstream_dnn(
-                torch.tensor(Zte, dtype=torch.float32, device=device)
-            ).cpu().numpy()
-        mse_linear = float(np.mean((pred_linear - Yte) ** 2))
-        mse_dnn = float(np.mean((pred_dnn - Yte) ** 2))
-        pred = pred_linear
-        result.update({"representation_dim": int(rep_dim),
-                       "fallback_used": bool(order_fallback),
-                       "d_estimated": int(dhat),
-                       "gmdd_rho": float(args.gmdd_rho),
-                       "test_mse_linear": mse_linear,
-                       "test_mse_dnn": mse_dnn})
-        result.update({"eigenvalues": eig.tolist(),
-                       "cumulative_ratio": cumulative.tolist()})
     else:
         raise ValueError(args.method)
     result["test_mse"] = float(np.mean((pred - Yte) ** 2))
@@ -292,7 +195,7 @@ def run_one(X, Y, args, seed):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True); ap.add_argument("--out_dir", required=True)
-    ap.add_argument("--method", choices=["aks_nnr", "full_dnn", "linear", "gmddnet_s", "gmddnet_f"], required=True)
+    ap.add_argument("--method", choices=["aks_nnr", "full_dnn", "linear"], required=True)
     ap.add_argument("--seed", type=int, required=True)
     ap.add_argument("--test_frac", type=float, default=.30); ap.add_argument("--d_max", type=int, default=10)
     ap.add_argument("--m", type=int, default=0); ap.add_argument("--h", type=float, default=0.)
@@ -301,10 +204,6 @@ def main():
     ap.add_argument("--hidden_dim", type=int, default=256); ap.add_argument("--patience", type=int, default=20)
     ap.add_argument("--val_split", type=float, default=.30); ap.add_argument("--stop_threshold", type=float, default=.30)
     ap.add_argument("--max_epochs", type=int, default=800); ap.add_argument("--cpu", action="store_true")
-    ap.add_argument("--gmdd_max_dim", type=int, default=10)
-    ap.add_argument("--gmdd_rho", type=float, default=0.90)
-    ap.add_argument("--iter_num", type=int, default=100)
-    ap.add_argument("--batch_size", type=int, default=100)
     ap.add_argument("--no_standardize", action="store_true"); args = ap.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
     X, Y = load_energy(args.data)
