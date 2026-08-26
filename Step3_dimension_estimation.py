@@ -16,7 +16,7 @@ class DimensionEstimator:
             Maximum dimension reached during training.
         lambda_n : float, optional
             Custom penalty factor. If None, uses:
-            n^(-2 / (2 + d_max)) * log(n).
+            n^(-2 / (2 + d_max)) * log(log(n)).
         """
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -33,9 +33,8 @@ class DimensionEstimator:
         self.dimension_fallback_used = False
 
         if lambda_n is None:
-            self.lambda_n = (n ** (-2 / (2 + d_max))) * torch.log(
-                torch.tensor(n, dtype=torch.float32, device=self.device)
-            )
+            n_tensor = torch.tensor(n, dtype=torch.float32, device=self.device)
+            self.lambda_n = (n ** (-2 / (2 + d_max))) * torch.log(torch.log(n_tensor))
         else:
             self.lambda_n = torch.tensor(
                 lambda_n, dtype=torch.float32, device=self.device
