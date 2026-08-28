@@ -123,7 +123,7 @@ class DataGenerator:
 
             y = np.column_stack([h1, h2, h3])
 
-    return y + self._eps(n, 3, noise_std, random_noise), eta
+            return y + self._eps(n, 3, noise_std, random_noise), eta
 
         raise ValueError(f"Unknown d=2 article model: {model}")
 
