@@ -111,14 +111,19 @@ class DataGenerator:
         if model == "E":
             z1, z2 = self._z(X, 0), self._z(X, 2)
             z3, z4 = self._z(X, 4), self._z(X, 6)
+        
             e1 = 3.0 * np.tanh(z1) + 0.8 * np.tanh(z2)
             e2 = 2.0 * np.sin(z3) + 0.8 * z4 / np.sqrt(1.0 + z4 ** 2)
+        
             eta = np.column_stack([e1, e2])
-            y = np.column_stack([
-                e1 + 0.15 * np.sin(e1 + e2),
-                e2 + 0.15 * np.tanh(e1 + 2.0 * e2),
-            ])
-            return y + self._eps(n, 2, noise_std, random_noise), eta
+        
+            h1 = e1 + 0.15 * np.sin(e1 + e2)
+            h2 = e2 + 0.15 * np.tanh(e1 + 2.0 * e2)
+            h3 = 0.15 * np.sin(e1 - e2) + 0.15 * np.tanh(e1 + e2)
+
+            y = np.column_stack([h1, h2, h3])
+
+    return y + self._eps(n, 3, noise_std, random_noise), eta
 
         raise ValueError(f"Unknown d=2 article model: {model}")
 
